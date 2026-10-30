@@ -1,0 +1,1831 @@
+{
+  "projects": [
+    {
+      "id": "proj-1",
+      "name": "OmniStore E-Commerce Core",
+      "description": "High-throughput shopping cart, stock management, and flash-sale checkout APIs.",
+      "createdAt": "2026-10-10T10:00:00.000Z",
+      "status": "active",
+      "scenarioCount": 4,
+      "defectCount": 5
+    },
+    {
+      "id": "proj-2",
+      "name": "PayFlow Banking Gateway",
+      "description": "Microservice handling balance transfers, double-spend prevention, and payment tokens.",
+      "createdAt": "2026-10-12T14:30:00.000Z",
+      "status": "active",
+      "scenarioCount": 3,
+      "defectCount": 1
+    },
+    {
+      "id": "proj-3",
+      "name": "TicketSprint Global Ticketing",
+      "description": "Seat reservation lock manager and burst concurrent seat allocation.",
+      "createdAt": "2026-10-15T09:15:00.000Z",
+      "status": "active",
+      "scenarioCount": 2,
+      "defectCount": 1
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "scen-race-inventory",
+      "projectId": "proj-1",
+      "name": "Flash Sale: 2 Concurrent Users On 1 Last Item (Race Condition)",
+      "description": "Simulates two virtual buyers submitting concurrent purchase requests for a single unit of stock. Detects overselling and dirty reads.",
+      "category": "concurrency",
+      "virtualUsers": 2,
+      "passRate": 33,
+      "totalRuns": 18,
+      "createdAt": "2026-10-10T11:00:00.000Z",
+      "lastRunAt": "2026-10-30T15:06:54.276Z",
+      "steps": [
+        {
+          "id": "step-1",
+          "name": "Concurrent User Authentication",
+          "type": "LOGIN_AUTH",
+          "endpoint": "/api/sandbox/users/login",
+          "method": "POST",
+          "delayMs": 20,
+          "expectedStatus": 200,
+          "expectedAssertion": "token != null"
+        },
+        {
+          "id": "step-2",
+          "name": "Inspect Stock Availability",
+          "type": "VERIFY_INVENTORY",
+          "endpoint": "/api/sandbox/inventory/item-99",
+          "method": "GET",
+          "delayMs": 15,
+          "expectedStatus": 200,
+          "expectedAssertion": "stock >= 1"
+        },
+        {
+          "id": "step-3",
+          "name": "Simultaneous Checkout Request",
+          "type": "CHECKOUT_PAYMENT",
+          "endpoint": "/api/sandbox/inventory/checkout",
+          "method": "POST",
+          "payload": {
+            "itemId": "item-99",
+            "quantity": 1
+          },
+          "delayMs": 0,
+          "expectedStatus": 200,
+          "expectedAssertion": "exactly_one_success_and_stock_non_negative"
+        }
+      ],
+      "isFlaky": true
+    },
+    {
+      "id": "scen-coupon-double-spend",
+      "projectId": "proj-1",
+      "name": "Promo Code Double-Spend Under Parallel Submissions",
+      "description": "Validates that a single-use $50 welcome coupon cannot be applied in parallel checkout sessions by the same customer.",
+      "category": "concurrency",
+      "virtualUsers": 5,
+      "passRate": 75,
+      "totalRuns": 8,
+      "createdAt": "2026-10-12T16:00:00.000Z",
+      "lastRunAt": "2026-10-19T18:40:00.000Z",
+      "steps": [
+        {
+          "id": "step-c1",
+          "name": "Load Cart State",
+          "type": "ADD_TO_CART",
+          "endpoint": "/api/sandbox/cart/items",
+          "method": "POST",
+          "delayMs": 10,
+          "expectedStatus": 200
+        },
+        {
+          "id": "step-c2",
+          "name": "Parallel Coupon Redemption",
+          "type": "CALL_API",
+          "endpoint": "/api/sandbox/cart/apply-coupon",
+          "method": "POST",
+          "payload": {
+            "couponCode": "SAVE50-SINGLE-USE"
+          },
+          "delayMs": 0,
+          "expectedStatus": 200,
+          "expectedAssertion": "only_one_successful_redemption"
+        }
+      ]
+    },
+    {
+      "id": "scen-negative-inventory-injection",
+      "projectId": "proj-1",
+      "name": "Cart Quantity Underflow & Boundary Validation",
+      "description": "Attempts to supply negative integer quantities (-1, 0, 9999999) to verify server-side defensive input guards.",
+      "category": "ecommerce",
+      "virtualUsers": 1,
+      "passRate": 100,
+      "totalRuns": 19,
+      "createdAt": "2026-10-13T08:00:00.000Z",
+      "lastRunAt": "2026-10-20T06:00:00.000Z",
+      "steps": [
+        {
+          "id": "step-u1",
+          "name": "Negative Quantity Update",
+          "type": "UPDATE_QUANTITY",
+          "endpoint": "/api/sandbox/cart/update-quantity",
+          "method": "POST",
+          "payload": {
+            "itemId": "item-99",
+            "quantity": -5
+          },
+          "delayMs": 25,
+          "expectedStatus": 400,
+          "expectedAssertion": "status == 400 && error == \"INVALID_QUANTITY\""
+        }
+      ]
+    },
+    {
+      "id": "scen-idempotency-replay",
+      "projectId": "proj-2",
+      "name": "Payment Webhook Idempotency & Network Retry Storm",
+      "description": "Simulates payment gateway webhook duplicate dispatches with identical Idempotency-Key headers.",
+      "category": "api",
+      "virtualUsers": 10,
+      "passRate": 90,
+      "totalRuns": 12,
+      "createdAt": "2026-10-14T12:00:00.000Z",
+      "lastRunAt": "2026-10-19T21:10:00.000Z",
+      "steps": [
+        {
+          "id": "step-i1",
+          "name": "Duplicate Payment Dispatch",
+          "type": "CALL_API",
+          "endpoint": "/api/sandbox/payments/charge",
+          "method": "POST",
+          "payload": {
+            "amount": 49.99,
+            "idempotencyKey": "idem_9901_fixed"
+          },
+          "delayMs": 5,
+          "expectedStatus": 200,
+          "expectedAssertion": "duplicate_requests_return_cached_receipt"
+        }
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "id": "run-1793372814276-y35p",
+      "scenarioId": "scen-race-inventory",
+      "scenarioName": "Test Concurrency Run",
+      "projectId": "proj-1",
+      "mode": "defective",
+      "virtualUsers": 2,
+      "initialStock": 1,
+      "finalStock": -1,
+      "successOrders": 2,
+      "failedOrders": 0,
+      "status": "DEFECT_DETECTED",
+      "startedAt": "2026-10-30T15:06:54.257Z",
+      "completedAt": "2026-10-30T15:06:54.276Z",
+      "durationMs": 19,
+      "defectSummary": "Race Condition Detected: 2 orders succeeded for 1 available stock unit (Inventory underflow: final stock = -1)",
+      "events": [
+        {
+          "stepIndex": 0,
+          "timestampOffsetMs": 0,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "USER_ACTION",
+          "title": "User 1 Submits Checkout Request",
+          "details": "Client POST /api/inventory/checkout with {\"itemId\": \"item-99\", \"quantity\": 1}",
+          "expectedState": {
+            "stock": 1,
+            "activeUsers": 2
+          },
+          "actualState": {
+            "stock": 1,
+            "activeUsers": 2
+          },
+          "requestData": {
+            "requestId": "req_u1_a8864",
+            "method": "POST",
+            "endpoint": "/api/inventory/checkout",
+            "headers": {
+              "Content-Type": "application/json",
+              "X-Virtual-User": "u_1"
+            },
+            "body": {
+              "itemId": "item-99",
+              "quantity": 1
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-1] Inbound checkout request req_u1_a8864 for item-99",
+              "timestamp": "15:06:54.257"
+            }
+          ],
+          "id": "evt-1793372814257-27c1l"
+        },
+        {
+          "stepIndex": 0,
+          "timestampOffsetMs": 2,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "USER_ACTION",
+          "title": "User 2 Submits Checkout Request",
+          "details": "Client POST /api/inventory/checkout with {\"itemId\": \"item-99\", \"quantity\": 1}",
+          "expectedState": {
+            "stock": 1,
+            "activeUsers": 2
+          },
+          "actualState": {
+            "stock": 1,
+            "activeUsers": 2
+          },
+          "requestData": {
+            "requestId": "req_u2_3db2a",
+            "method": "POST",
+            "endpoint": "/api/inventory/checkout",
+            "headers": {
+              "Content-Type": "application/json",
+              "X-Virtual-User": "u_2"
+            },
+            "body": {
+              "itemId": "item-99",
+              "quantity": 1
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-2] Inbound checkout request req_u2_3db2a for item-99",
+              "timestamp": "15:06:54.257"
+            }
+          ],
+          "id": "evt-1793372814257-d18jl"
+        },
+        {
+          "stepIndex": 1,
+          "timestampOffsetMs": 12,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "DB_READ",
+          "title": "Thread-Worker-1 Reads Current Stock (1)",
+          "details": "SELECT stock FROM items WHERE id=\"item-99\" -> Result: 1. Checked (stock >= 1): true",
+          "expectedState": {
+            "stock": 1,
+            "checkValid": true
+          },
+          "actualState": {
+            "stock": 1,
+            "checkValid": true
+          },
+          "logs": [
+            {
+              "level": "DEBUG",
+              "message": "[Thread-Worker-1] SELECT stock FROM inventory WHERE item_id='item-99' (Returned: 1)",
+              "timestamp": "15:06:54.263"
+            },
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-1] Guard condition (stock >= 1) evaluated to true",
+              "timestamp": "15:06:54.263"
+            }
+          ],
+          "id": "evt-1793372814263-82d8b"
+        },
+        {
+          "stepIndex": 1,
+          "timestampOffsetMs": 14,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "DB_READ",
+          "title": "Thread-Worker-2 Reads Current Stock (1)",
+          "details": "SELECT stock FROM items WHERE id=\"item-99\" -> Result: 1. Checked (stock >= 1): true",
+          "expectedState": {
+            "stock": 0,
+            "checkValid": false
+          },
+          "actualState": {
+            "stock": 1,
+            "checkValid": true
+          },
+          "logs": [
+            {
+              "level": "DEBUG",
+              "message": "[Thread-Worker-2] SELECT stock FROM inventory WHERE item_id='item-99' (Returned: 1)",
+              "timestamp": "15:06:54.265"
+            },
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-2] Guard condition (stock >= 1) evaluated to true",
+              "timestamp": "15:06:54.265"
+            }
+          ],
+          "id": "evt-1793372814265-1ttg3"
+        },
+        {
+          "stepIndex": 2,
+          "timestampOffsetMs": 25,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "DB_WRITE",
+          "title": "Thread-Worker-1 Decrements Stock and Emits Order",
+          "details": "UPDATE inventory SET stock = stock - 1. Stock updated: 1 -> 0. Order ORD-4274-1 created.",
+          "expectedState": {
+            "stock": 0,
+            "successfulOrders": 1,
+            "hasOversold": false
+          },
+          "actualState": {
+            "stock": 0,
+            "successfulOrders": 1,
+            "hasOversold": false
+          },
+          "isDefectPoint": false,
+          "responseData": {
+            "status": 200,
+            "latencyMs": 25,
+            "body": {
+              "success": true,
+              "orderId": "ORD-4274-1",
+              "remainingStock": 0
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-1] Committed deduction. Remaining stock: 0",
+              "timestamp": "15:06:54.274"
+            }
+          ],
+          "id": "evt-1793372814274-b55nh"
+        },
+        {
+          "stepIndex": 2,
+          "timestampOffsetMs": 27,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "DEFECT_TRIGGERED",
+          "title": "CRITICAL DEFECT: Thread-Worker-2 Oversells Depleted Stock (Stock: -1)",
+          "details": "UPDATE inventory SET stock = stock - 1. Stock updated: 1 -> -1. Order ORD-4276-2 created.",
+          "expectedState": {
+            "stock": 0,
+            "successfulOrders": 1,
+            "hasOversold": false
+          },
+          "actualState": {
+            "stock": -1,
+            "successfulOrders": 2,
+            "hasOversold": true
+          },
+          "isDefectPoint": true,
+          "responseData": {
+            "status": 200,
+            "latencyMs": 27,
+            "body": {
+              "success": true,
+              "orderId": "ORD-4276-2",
+              "remainingStock": -1
+            }
+          },
+          "logs": [
+            {
+              "level": "ERROR",
+              "message": "[Thread-Worker-2] RACE CONDITION! Decremented inventory below zero to -1. Oversold by 1!",
+              "timestamp": "15:06:54.276"
+            }
+          ],
+          "id": "evt-1793372814276-96hma"
+        },
+        {
+          "stepIndex": 3,
+          "timestampOffsetMs": 19,
+          "threadId": "Quality-Invariants-Monitor",
+          "virtualUser": 0,
+          "eventType": "ASSERTION_FAILED",
+          "title": "CRITICAL DEFECT: Concurrency Invariant Violated",
+          "details": "Assertion failed: [stock >= 0 && successfulOrders <= initialStock]. Stock is -1, orders created: 2.",
+          "expectedState": {
+            "stock": 0,
+            "maxSuccessOrders": 1,
+            "oversold": false
+          },
+          "actualState": {
+            "stock": -1,
+            "actualSuccessOrders": 2,
+            "oversold": true
+          },
+          "isDefectPoint": true,
+          "logs": [
+            {
+              "level": "ERROR",
+              "message": "[Monitor] Race condition confirmed! Oversold count: 1",
+              "timestamp": "15:06:54.276"
+            }
+          ],
+          "id": "evt-1793372814276-zwo54"
+        }
+      ],
+      "aiAnalysis": {
+        "isAiGenerated": false,
+        "modelUsed": "BugMirror Rule-Based Concurrency Detective",
+        "rootCause": "Time-of-Check to Time-of-Use (TOCTOU) race condition in InventoryService.checkout() without database row lock or transaction isolation.",
+        "severity": "CRITICAL",
+        "observedEvidence": [
+          "2 concurrent HTTP requests dispatched simultaneously within a 19ms window.",
+          "Multiple worker threads read stock=1 before preceding transactions committed their deductions.",
+          "Inventory dropped below zero to -1, generating 2 confirmed orders from 1 stock units."
+        ],
+        "reproductionSteps": [
+          "Set inventory stock to 1 unit(s).",
+          "Trigger 2 parallel POST requests to /api/inventory/checkout.",
+          "Observe simultaneous read validation without atomic locking.",
+          "Check final stock level in database (-1)."
+        ],
+        "suggestedFix": "// Java / Spring Boot Fix:\n@Transactional(isolation = Isolation.SERIALIZABLE)\n// Or with JPA Pessimistic Lock:\n@Lock(LockModeType.PESSIMISTIC_WRITE)\n@Query(\"SELECT i FROM Inventory i WHERE i.id = :id\")\nOptional<Inventory> findByIdForUpdate(@Param(\"id\") String id);\n\n// In Node.js / TypeScript:\n// Use atomic SQL guards:\n// UPDATE inventory SET stock = stock - 1 WHERE id = 'item-99' AND stock >= 1;\n// Or wrap the transaction in an AsyncMutex.",
+        "jiraMarkdown": "h2. [CRITICAL] Race Condition: Overselling under concurrent load\n*Defect ID:* BM-4276\n*Severity:* Critical\n*Preconditions:* Inventory stock = 1\n*Virtual Users:* 2\n*Expected:* Max 1 successful purchase(s), stock >= 0.\n*Actual:* 2 purchases succeeded, final stock = -1."
+      }
+    },
+    {
+      "id": "run-1793370380559-sdc5",
+      "scenarioId": "scen-race-inventory",
+      "scenarioName": "Flash Sale Oversell Race Condition",
+      "projectId": "proj-1",
+      "mode": "defective",
+      "virtualUsers": 2,
+      "initialStock": 1,
+      "finalStock": -1,
+      "successOrders": 2,
+      "failedOrders": 0,
+      "status": "DEFECT_DETECTED",
+      "startedAt": "2026-10-30T14:26:20.527Z",
+      "completedAt": "2026-10-30T14:26:20.559Z",
+      "durationMs": 32,
+      "defectSummary": "Race Condition Detected: 2 orders succeeded for 1 available stock unit (Inventory underflow: final stock = -1)",
+      "events": [
+        {
+          "stepIndex": 0,
+          "timestampOffsetMs": 0,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "USER_ACTION",
+          "title": "User 1 Submits Checkout Request",
+          "details": "Client POST /api/inventory/checkout with {\"itemId\": \"item-99\", \"quantity\": 1}",
+          "expectedState": {
+            "stock": 1,
+            "activeUsers": 2
+          },
+          "actualState": {
+            "stock": 1,
+            "activeUsers": 2
+          },
+          "requestData": {
+            "requestId": "req_u1_a3e81",
+            "method": "POST",
+            "endpoint": "/api/inventory/checkout",
+            "headers": {
+              "Content-Type": "application/json",
+              "X-Virtual-User": "u_1"
+            },
+            "body": {
+              "itemId": "item-99",
+              "quantity": 1
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-1] Inbound checkout request req_u1_a3e81 for item-99",
+              "timestamp": "14:26:20.527"
+            }
+          ],
+          "id": "evt-1793370380527-bdm4t"
+        },
+        {
+          "stepIndex": 0,
+          "timestampOffsetMs": 2,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "USER_ACTION",
+          "title": "User 2 Submits Checkout Request",
+          "details": "Client POST /api/inventory/checkout with {\"itemId\": \"item-99\", \"quantity\": 1}",
+          "expectedState": {
+            "stock": 1,
+            "activeUsers": 2
+          },
+          "actualState": {
+            "stock": 1,
+            "activeUsers": 2
+          },
+          "requestData": {
+            "requestId": "req_u2_1b6f9",
+            "method": "POST",
+            "endpoint": "/api/inventory/checkout",
+            "headers": {
+              "Content-Type": "application/json",
+              "X-Virtual-User": "u_2"
+            },
+            "body": {
+              "itemId": "item-99",
+              "quantity": 1
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-2] Inbound checkout request req_u2_1b6f9 for item-99",
+              "timestamp": "14:26:20.527"
+            }
+          ],
+          "id": "evt-1793370380527-5pa5c"
+        },
+        {
+          "stepIndex": 1,
+          "timestampOffsetMs": 12,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "DB_READ",
+          "title": "Thread-Worker-1 Reads Current Stock (1)",
+          "details": "SELECT stock FROM items WHERE id=\"item-99\" -> Result: 1. Checked (stock >= 1): true",
+          "expectedState": {
+            "stock": 1,
+            "checkValid": true
+          },
+          "actualState": {
+            "stock": 1,
+            "checkValid": true
+          },
+          "logs": [
+            {
+              "level": "DEBUG",
+              "message": "[Thread-Worker-1] SELECT stock FROM inventory WHERE item_id='item-99' (Returned: 1)",
+              "timestamp": "14:26:20.533"
+            },
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-1] Guard condition (stock >= 1) evaluated to true",
+              "timestamp": "14:26:20.533"
+            }
+          ],
+          "id": "evt-1793370380533-4o2o3"
+        },
+        {
+          "stepIndex": 1,
+          "timestampOffsetMs": 14,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "DB_READ",
+          "title": "Thread-Worker-2 Reads Current Stock (1)",
+          "details": "SELECT stock FROM items WHERE id=\"item-99\" -> Result: 1. Checked (stock >= 1): true",
+          "expectedState": {
+            "stock": 0,
+            "checkValid": false
+          },
+          "actualState": {
+            "stock": 1,
+            "checkValid": true
+          },
+          "logs": [
+            {
+              "level": "DEBUG",
+              "message": "[Thread-Worker-2] SELECT stock FROM inventory WHERE item_id='item-99' (Returned: 1)",
+              "timestamp": "14:26:20.534"
+            },
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-2] Guard condition (stock >= 1) evaluated to true",
+              "timestamp": "14:26:20.534"
+            }
+          ],
+          "id": "evt-1793370380534-b6xim"
+        },
+        {
+          "stepIndex": 2,
+          "timestampOffsetMs": 40,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "DB_WRITE",
+          "title": "Thread-Worker-1 Decrements Stock and Emits Order",
+          "details": "UPDATE inventory SET stock = stock - 1. Stock updated: 1 -> 0. Order ORD-0559-1 created.",
+          "expectedState": {
+            "stock": 0,
+            "successfulOrders": 1,
+            "hasOversold": false
+          },
+          "actualState": {
+            "stock": 0,
+            "successfulOrders": 1,
+            "hasOversold": false
+          },
+          "isDefectPoint": false,
+          "responseData": {
+            "status": 200,
+            "latencyMs": 40,
+            "body": {
+              "success": true,
+              "orderId": "ORD-0559-1",
+              "remainingStock": 0
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-1] Committed deduction. Remaining stock: 0",
+              "timestamp": "14:26:20.559"
+            }
+          ],
+          "id": "evt-1793370380559-onkhx"
+        },
+        {
+          "stepIndex": 2,
+          "timestampOffsetMs": 42,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "DEFECT_TRIGGERED",
+          "title": "CRITICAL DEFECT: Thread-Worker-2 Oversells Depleted Stock (Stock: -1)",
+          "details": "UPDATE inventory SET stock = stock - 1. Stock updated: 1 -> -1. Order ORD-0559-2 created.",
+          "expectedState": {
+            "stock": 0,
+            "successfulOrders": 1,
+            "hasOversold": false
+          },
+          "actualState": {
+            "stock": -1,
+            "successfulOrders": 2,
+            "hasOversold": true
+          },
+          "isDefectPoint": true,
+          "responseData": {
+            "status": 200,
+            "latencyMs": 42,
+            "body": {
+              "success": true,
+              "orderId": "ORD-0559-2",
+              "remainingStock": -1
+            }
+          },
+          "logs": [
+            {
+              "level": "ERROR",
+              "message": "[Thread-Worker-2] RACE CONDITION! Decremented inventory below zero to -1. Oversold by 1!",
+              "timestamp": "14:26:20.559"
+            }
+          ],
+          "id": "evt-1793370380559-ndjpy"
+        },
+        {
+          "stepIndex": 3,
+          "timestampOffsetMs": 32,
+          "threadId": "Quality-Invariants-Monitor",
+          "virtualUser": 0,
+          "eventType": "ASSERTION_FAILED",
+          "title": "CRITICAL DEFECT: Concurrency Invariant Violated",
+          "details": "Assertion failed: [stock >= 0 && successfulOrders <= initialStock]. Stock is -1, orders created: 2.",
+          "expectedState": {
+            "stock": 0,
+            "maxSuccessOrders": 1,
+            "oversold": false
+          },
+          "actualState": {
+            "stock": -1,
+            "actualSuccessOrders": 2,
+            "oversold": true
+          },
+          "isDefectPoint": true,
+          "logs": [
+            {
+              "level": "ERROR",
+              "message": "[Monitor] Race condition confirmed! Oversold count: 1",
+              "timestamp": "14:26:20.559"
+            }
+          ],
+          "id": "evt-1793370380559-lalmh"
+        }
+      ],
+      "aiAnalysis": {
+        "isAiGenerated": false,
+        "modelUsed": "BugMirror Rule-Based Concurrency Detective",
+        "rootCause": "Time-of-Check to Time-of-Use (TOCTOU) race condition in InventoryService.checkout() without database row lock or transaction isolation.",
+        "severity": "CRITICAL",
+        "observedEvidence": [
+          "2 concurrent HTTP requests dispatched simultaneously within a 32ms window.",
+          "Multiple worker threads read stock=1 before preceding transactions committed their deductions.",
+          "Inventory dropped below zero to -1, generating 2 confirmed orders from 1 stock units."
+        ],
+        "reproductionSteps": [
+          "Set inventory stock to 1 unit(s).",
+          "Trigger 2 parallel POST requests to /api/inventory/checkout.",
+          "Observe simultaneous read validation without atomic locking.",
+          "Check final stock level in database (-1)."
+        ],
+        "suggestedFix": "// Java / Spring Boot Fix:\n@Transactional(isolation = Isolation.SERIALIZABLE)\n// Or with JPA Pessimistic Lock:\n@Lock(LockModeType.PESSIMISTIC_WRITE)\n@Query(\"SELECT i FROM Inventory i WHERE i.id = :id\")\nOptional<Inventory> findByIdForUpdate(@Param(\"id\") String id);\n\n// In Node.js / TypeScript:\n// Use atomic SQL guards:\n// UPDATE inventory SET stock = stock - 1 WHERE id = 'item-99' AND stock >= 1;\n// Or wrap the transaction in an AsyncMutex.",
+        "jiraMarkdown": "h2. [CRITICAL] Race Condition: Overselling under concurrent load\n*Defect ID:* BM-0560\n*Severity:* Critical\n*Preconditions:* Inventory stock = 1\n*Virtual Users:* 2\n*Expected:* Max 1 successful purchase(s), stock >= 0.\n*Actual:* 2 purchases succeeded, final stock = -1."
+      }
+    },
+    {
+      "id": "run-1792508603949-bt4b",
+      "scenarioId": "scen-race-inventory",
+      "scenarioName": "Flash Sale Synchronized Mode",
+      "projectId": "proj-1",
+      "mode": "corrected",
+      "virtualUsers": 2,
+      "initialStock": 1,
+      "finalStock": 0,
+      "successOrders": 1,
+      "failedOrders": 1,
+      "status": "PASSED",
+      "startedAt": "2026-10-20T15:03:23.925Z",
+      "completedAt": "2026-10-20T15:03:23.949Z",
+      "durationMs": 24,
+      "events": [
+        {
+          "stepIndex": 0,
+          "timestampOffsetMs": 0,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "USER_ACTION",
+          "title": "User 1 Submits Checkout Request",
+          "details": "Client POST /api/inventory/checkout with {\"itemId\": \"item-99\", \"quantity\": 1}",
+          "expectedState": {
+            "initialStock": 1
+          },
+          "actualState": {
+            "currentStock": 1
+          },
+          "requestData": {
+            "requestId": "req_u1_dd77a",
+            "method": "POST",
+            "endpoint": "/api/inventory/checkout",
+            "headers": {
+              "Content-Type": "application/json",
+              "X-Virtual-User": "u_1"
+            },
+            "body": {
+              "itemId": "item-99",
+              "quantity": 1
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-1] Synchronized checkout request received: req_u1_dd77a",
+              "timestamp": "15:03:23.926"
+            }
+          ],
+          "id": "evt-1792508603926-ubdpz"
+        },
+        {
+          "stepIndex": 1,
+          "timestampOffsetMs": 8,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "MUTEX_ACQUIRE",
+          "title": "Thread-Worker-1 Requests Exclusive Transaction Lock",
+          "details": "SELECT * FROM inventory WHERE id = 'item-99' FOR UPDATE (Row Lock / Mutex)",
+          "expectedState": {
+            "lockPending": true
+          },
+          "actualState": {
+            "lockPending": true
+          },
+          "logs": [
+            {
+              "level": "DEBUG",
+              "message": "[Thread-Worker-1] Acquiring mutex lock for resource 'item-99'",
+              "timestamp": "15:03:23.926"
+            }
+          ],
+          "id": "evt-1792508603926-fghbp"
+        },
+        {
+          "stepIndex": 0,
+          "timestampOffsetMs": 2,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "USER_ACTION",
+          "title": "User 2 Submits Checkout Request",
+          "details": "Client POST /api/inventory/checkout with {\"itemId\": \"item-99\", \"quantity\": 1}",
+          "expectedState": {
+            "initialStock": 1
+          },
+          "actualState": {
+            "currentStock": 1
+          },
+          "requestData": {
+            "requestId": "req_u2_c2e9e",
+            "method": "POST",
+            "endpoint": "/api/inventory/checkout",
+            "headers": {
+              "Content-Type": "application/json",
+              "X-Virtual-User": "u_2"
+            },
+            "body": {
+              "itemId": "item-99",
+              "quantity": 1
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-2] Synchronized checkout request received: req_u2_c2e9e",
+              "timestamp": "15:03:23.926"
+            }
+          ],
+          "id": "evt-1792508603926-do24t"
+        },
+        {
+          "stepIndex": 1,
+          "timestampOffsetMs": 10,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "MUTEX_ACQUIRE",
+          "title": "Thread-Worker-2 Requests Exclusive Transaction Lock",
+          "details": "SELECT * FROM inventory WHERE id = 'item-99' FOR UPDATE (Row Lock / Mutex)",
+          "expectedState": {
+            "lockPending": true
+          },
+          "actualState": {
+            "lockPending": true
+          },
+          "logs": [
+            {
+              "level": "DEBUG",
+              "message": "[Thread-Worker-2] Acquiring mutex lock for resource 'item-99'",
+              "timestamp": "15:03:23.926"
+            }
+          ],
+          "id": "evt-1792508603926-btli3"
+        },
+        {
+          "stepIndex": 1,
+          "timestampOffsetMs": 14,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "DB_READ",
+          "title": "Thread-Worker-1 Holds Mutex & Reads Fresh Stock (1)",
+          "details": "Protected critical section: Current verified stock = 1",
+          "expectedState": {
+            "stock": 1
+          },
+          "actualState": {
+            "stock": 1
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-1] Mutex acquired. Fresh stock read: 1",
+              "timestamp": "15:03:23.926"
+            }
+          ],
+          "id": "evt-1792508603926-w0yn3"
+        },
+        {
+          "stepIndex": 2,
+          "timestampOffsetMs": 30,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "DB_WRITE",
+          "title": "Thread-Worker-1 Commits Stock Deduction (1 -> 0)",
+          "details": "Stock decremented safely to 0. Order ORD-3937-1 confirmed. Releasing lock.",
+          "expectedState": {
+            "stock": 0,
+            "orders": 1
+          },
+          "actualState": {
+            "stock": 0,
+            "orders": 1
+          },
+          "responseData": {
+            "status": 200,
+            "latencyMs": 30,
+            "body": {
+              "success": true,
+              "orderId": "ORD-3937-1",
+              "remainingStock": 0
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-1] Transaction committed. Stock: 0. Releasing lock.",
+              "timestamp": "15:03:23.937"
+            }
+          ],
+          "id": "evt-1792508603937-u4xry"
+        },
+        {
+          "stepIndex": 1,
+          "timestampOffsetMs": 16,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "DB_READ",
+          "title": "Thread-Worker-2 Holds Mutex & Reads Fresh Stock (0)",
+          "details": "Protected critical section: Current verified stock = 0",
+          "expectedState": {
+            "stock": 0
+          },
+          "actualState": {
+            "stock": 0
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-2] Mutex acquired. Fresh stock read: 0",
+              "timestamp": "15:03:23.937"
+            }
+          ],
+          "id": "evt-1792508603938-91w82"
+        },
+        {
+          "stepIndex": 2,
+          "timestampOffsetMs": 34,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "MUTEX_REJECT",
+          "title": "Thread-Worker-2 Rejects Order: Sold Out (Stock: 0)",
+          "details": "Verification under lock confirmed stock = 0 < 1. Emitting HTTP 409 Conflict.",
+          "expectedState": {
+            "stock": 0,
+            "expectedStatus": 409
+          },
+          "actualState": {
+            "stock": 0,
+            "actualStatus": 409
+          },
+          "responseData": {
+            "status": 409,
+            "latencyMs": 34,
+            "body": {
+              "success": false,
+              "error": "OUT_OF_STOCK",
+              "message": "Item sold out during checkout."
+            }
+          },
+          "logs": [
+            {
+              "level": "WARN",
+              "message": "[Thread-Worker-2] Sold out under lock. Stock: 0. Emitting HTTP 409.",
+              "timestamp": "15:03:23.949"
+            }
+          ],
+          "id": "evt-1792508603949-ao8b7"
+        },
+        {
+          "stepIndex": 3,
+          "timestampOffsetMs": 24,
+          "threadId": "Quality-Invariants-Monitor",
+          "virtualUser": 0,
+          "eventType": "ASSERTION_PASSED",
+          "title": "SUCCESS: Concurrency Invariants Preserved",
+          "details": "All invariants satisfied: Final stock is 0 (>= 0), successful orders: 1 (<= 1).",
+          "expectedState": {
+            "stock": 0,
+            "maxSuccessOrders": 1,
+            "oversold": false
+          },
+          "actualState": {
+            "stock": 0,
+            "actualSuccessOrders": 1,
+            "oversold": false
+          },
+          "isDefectPoint": false,
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Monitor] Serialization verification passed. Zero oversell.",
+              "timestamp": "15:03:23.949"
+            }
+          ],
+          "id": "evt-1792508603949-oxkhq"
+        }
+      ]
+    },
+    {
+      "id": "run-1792508598074-beil",
+      "scenarioId": "scen-race-inventory",
+      "scenarioName": "Flash Sale Oversell Race Condition",
+      "projectId": "proj-1",
+      "mode": "defective",
+      "virtualUsers": 2,
+      "initialStock": 1,
+      "finalStock": -1,
+      "successOrders": 2,
+      "failedOrders": 0,
+      "status": "DEFECT_DETECTED",
+      "startedAt": "2026-10-20T15:03:18.038Z",
+      "completedAt": "2026-10-20T15:03:18.074Z",
+      "durationMs": 36,
+      "defectSummary": "Race Condition Detected: 2 orders succeeded for 1 available stock unit (Inventory underflow: final stock = -1)",
+      "events": [
+        {
+          "stepIndex": 0,
+          "timestampOffsetMs": 0,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "USER_ACTION",
+          "title": "User 1 Submits Checkout Request",
+          "details": "Client POST /api/inventory/checkout with {\"itemId\": \"item-99\", \"quantity\": 1}",
+          "expectedState": {
+            "stock": 1,
+            "activeUsers": 2
+          },
+          "actualState": {
+            "stock": 1,
+            "activeUsers": 2
+          },
+          "requestData": {
+            "requestId": "req_u1_ad06e",
+            "method": "POST",
+            "endpoint": "/api/inventory/checkout",
+            "headers": {
+              "Content-Type": "application/json",
+              "X-Virtual-User": "u_1"
+            },
+            "body": {
+              "itemId": "item-99",
+              "quantity": 1
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-1] Inbound checkout request req_u1_ad06e for item-99",
+              "timestamp": "15:03:18.039"
+            }
+          ],
+          "id": "evt-1792508598039-7r33h"
+        },
+        {
+          "stepIndex": 0,
+          "timestampOffsetMs": 2,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "USER_ACTION",
+          "title": "User 2 Submits Checkout Request",
+          "details": "Client POST /api/inventory/checkout with {\"itemId\": \"item-99\", \"quantity\": 1}",
+          "expectedState": {
+            "stock": 1,
+            "activeUsers": 2
+          },
+          "actualState": {
+            "stock": 1,
+            "activeUsers": 2
+          },
+          "requestData": {
+            "requestId": "req_u2_3ef64",
+            "method": "POST",
+            "endpoint": "/api/inventory/checkout",
+            "headers": {
+              "Content-Type": "application/json",
+              "X-Virtual-User": "u_2"
+            },
+            "body": {
+              "itemId": "item-99",
+              "quantity": 1
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-2] Inbound checkout request req_u2_3ef64 for item-99",
+              "timestamp": "15:03:18.040"
+            }
+          ],
+          "id": "evt-1792508598040-ffefx"
+        },
+        {
+          "stepIndex": 1,
+          "timestampOffsetMs": 12,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "DB_READ",
+          "title": "Thread-Worker-1 Reads Current Stock (1)",
+          "details": "SELECT stock FROM items WHERE id=\"item-99\" -> Result: 1. Checked (stock >= 1): true",
+          "expectedState": {
+            "stock": 1,
+            "checkValid": true
+          },
+          "actualState": {
+            "stock": 1,
+            "checkValid": true
+          },
+          "logs": [
+            {
+              "level": "DEBUG",
+              "message": "[Thread-Worker-1] SELECT stock FROM inventory WHERE item_id='item-99' (Returned: 1)",
+              "timestamp": "15:03:18.046"
+            },
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-1] Guard condition (stock >= 1) evaluated to true",
+              "timestamp": "15:03:18.046"
+            }
+          ],
+          "id": "evt-1792508598046-k6qeg"
+        },
+        {
+          "stepIndex": 1,
+          "timestampOffsetMs": 14,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "DB_READ",
+          "title": "Thread-Worker-2 Reads Current Stock (1)",
+          "details": "SELECT stock FROM items WHERE id=\"item-99\" -> Result: 1. Checked (stock >= 1): true",
+          "expectedState": {
+            "stock": 0,
+            "checkValid": false
+          },
+          "actualState": {
+            "stock": 1,
+            "checkValid": true
+          },
+          "logs": [
+            {
+              "level": "DEBUG",
+              "message": "[Thread-Worker-2] SELECT stock FROM inventory WHERE item_id='item-99' (Returned: 1)",
+              "timestamp": "15:03:18.048"
+            },
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-2] Guard condition (stock >= 1) evaluated to true",
+              "timestamp": "15:03:18.048"
+            }
+          ],
+          "id": "evt-1792508598048-rm3lx"
+        },
+        {
+          "stepIndex": 2,
+          "timestampOffsetMs": 40,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "DB_WRITE",
+          "title": "Thread-Worker-1 Decrements Stock and Emits Order",
+          "details": "UPDATE inventory SET stock = stock - 1. Stock updated: 1 -> 0. Order ORD-8072-1 created.",
+          "expectedState": {
+            "stock": 0,
+            "successfulOrders": 1,
+            "hasOversold": false
+          },
+          "actualState": {
+            "stock": 0,
+            "successfulOrders": 1,
+            "hasOversold": false
+          },
+          "isDefectPoint": false,
+          "responseData": {
+            "status": 200,
+            "latencyMs": 40,
+            "body": {
+              "success": true,
+              "orderId": "ORD-8072-1",
+              "remainingStock": 0
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-Worker-1] Committed deduction. Remaining stock: 0",
+              "timestamp": "15:03:18.072"
+            }
+          ],
+          "id": "evt-1792508598072-3zu8i"
+        },
+        {
+          "stepIndex": 2,
+          "timestampOffsetMs": 42,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "DEFECT_TRIGGERED",
+          "title": "CRITICAL DEFECT: Thread-Worker-2 Oversells Depleted Stock (Stock: -1)",
+          "details": "UPDATE inventory SET stock = stock - 1. Stock updated: 1 -> -1. Order ORD-8073-2 created.",
+          "expectedState": {
+            "stock": 0,
+            "successfulOrders": 1,
+            "hasOversold": false
+          },
+          "actualState": {
+            "stock": -1,
+            "successfulOrders": 2,
+            "hasOversold": true
+          },
+          "isDefectPoint": true,
+          "responseData": {
+            "status": 200,
+            "latencyMs": 42,
+            "body": {
+              "success": true,
+              "orderId": "ORD-8073-2",
+              "remainingStock": -1
+            }
+          },
+          "logs": [
+            {
+              "level": "ERROR",
+              "message": "[Thread-Worker-2] RACE CONDITION! Decremented inventory below zero to -1. Oversold by 1!",
+              "timestamp": "15:03:18.073"
+            }
+          ],
+          "id": "evt-1792508598073-uz8zz"
+        },
+        {
+          "stepIndex": 3,
+          "timestampOffsetMs": 36,
+          "threadId": "Quality-Invariants-Monitor",
+          "virtualUser": 0,
+          "eventType": "ASSERTION_FAILED",
+          "title": "CRITICAL DEFECT: Concurrency Invariant Violated",
+          "details": "Assertion failed: [stock >= 0 && successfulOrders <= initialStock]. Stock is -1, orders created: 2.",
+          "expectedState": {
+            "stock": 0,
+            "maxSuccessOrders": 1,
+            "oversold": false
+          },
+          "actualState": {
+            "stock": -1,
+            "actualSuccessOrders": 2,
+            "oversold": true
+          },
+          "isDefectPoint": true,
+          "logs": [
+            {
+              "level": "ERROR",
+              "message": "[Monitor] Race condition confirmed! Oversold count: 1",
+              "timestamp": "15:03:18.074"
+            }
+          ],
+          "id": "evt-1792508598074-5obhn"
+        }
+      ],
+      "aiAnalysis": {
+        "isAiGenerated": false,
+        "modelUsed": "BugMirror Rule-Based Concurrency Detective",
+        "rootCause": "Time-of-Check to Time-of-Use (TOCTOU) race condition in InventoryService.checkout() without database row lock or transaction isolation.",
+        "severity": "CRITICAL",
+        "observedEvidence": [
+          "2 concurrent HTTP requests dispatched simultaneously within a 36ms window.",
+          "Multiple worker threads read stock=1 before preceding transactions committed their deductions.",
+          "Inventory dropped below zero to -1, generating 2 confirmed orders from 1 stock units."
+        ],
+        "reproductionSteps": [
+          "Set inventory stock to 1 unit(s).",
+          "Trigger 2 parallel POST requests to /api/inventory/checkout.",
+          "Observe simultaneous read validation without atomic locking.",
+          "Check final stock level in database (-1)."
+        ],
+        "suggestedFix": "// Java / Spring Boot Fix:\n@Transactional(isolation = Isolation.SERIALIZABLE)\n// Or with JPA Pessimistic Lock:\n@Lock(LockModeType.PESSIMISTIC_WRITE)\n@Query(\"SELECT i FROM Inventory i WHERE i.id = :id\")\nOptional<Inventory> findByIdForUpdate(@Param(\"id\") String id);\n\n// In Node.js / TypeScript:\n// Use atomic SQL guards:\n// UPDATE inventory SET stock = stock - 1 WHERE id = 'item-99' AND stock >= 1;\n// Or wrap the transaction in an AsyncMutex.",
+        "jiraMarkdown": "h2. [CRITICAL] Race Condition: Overselling under concurrent load\n*Defect ID:* BM-8074\n*Severity:* Critical\n*Preconditions:* Inventory stock = 1\n*Virtual Users:* 2\n*Expected:* Max 1 successful purchase(s), stock >= 0.\n*Actual:* 2 purchases succeeded, final stock = -1."
+      }
+    },
+    {
+      "id": "run-seed-defective-race",
+      "scenarioId": "scen-race-inventory",
+      "scenarioName": "Flash Sale: 2 Concurrent Users On 1 Last Item (Race Condition)",
+      "projectId": "proj-1",
+      "mode": "defective",
+      "virtualUsers": 2,
+      "initialStock": 1,
+      "finalStock": -1,
+      "successOrders": 2,
+      "failedOrders": 0,
+      "status": "DEFECT_DETECTED",
+      "startedAt": "2026-10-20T13:02:34.700Z",
+      "completedAt": "2026-10-20T13:02:35.021Z",
+      "durationMs": 320,
+      "defectSummary": "Race Condition Detected: 2 orders succeeded for 1 available stock unit (Inventory underflow: final stock = -1)",
+      "events": [
+        {
+          "id": "evt-1",
+          "stepIndex": 0,
+          "timestampOffsetMs": 0,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "USER_ACTION",
+          "title": "User 1 Dispatches Checkout Request",
+          "details": "Buyer 1 initiated POST /api/inventory/checkout with itemId: \"item-99\", quantity: 1",
+          "expectedState": {
+            "stock": 1,
+            "user1Cart": 1,
+            "user2Cart": 1
+          },
+          "actualState": {
+            "stock": 1,
+            "user1Cart": 1,
+            "user2Cart": 1
+          },
+          "requestData": {
+            "requestId": "req_u1_a9f24",
+            "method": "POST",
+            "endpoint": "/api/inventory/checkout",
+            "headers": {
+              "Content-Type": "application/json",
+              "X-User-Id": "user_alpha"
+            },
+            "body": {
+              "itemId": "item-99",
+              "quantity": 1
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "HTTP POST /api/inventory/checkout received from client IP 192.168.1.101",
+              "timestamp": "14:20:00.002"
+            }
+          ]
+        },
+        {
+          "id": "evt-2",
+          "stepIndex": 0,
+          "timestampOffsetMs": 2,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "USER_ACTION",
+          "title": "User 2 Dispatches Concurrent Checkout Request",
+          "details": "Buyer 2 initiated POST /api/inventory/checkout with itemId: \"item-99\", quantity: 1",
+          "expectedState": {
+            "stock": 1,
+            "user1Cart": 1,
+            "user2Cart": 1
+          },
+          "actualState": {
+            "stock": 1,
+            "user1Cart": 1,
+            "user2Cart": 1
+          },
+          "requestData": {
+            "requestId": "req_u2_c81d0",
+            "method": "POST",
+            "endpoint": "/api/inventory/checkout",
+            "headers": {
+              "Content-Type": "application/json",
+              "X-User-Id": "user_beta"
+            },
+            "body": {
+              "itemId": "item-99",
+              "quantity": 1
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "HTTP POST /api/inventory/checkout received from client IP 192.168.1.102",
+              "timestamp": "14:20:00.004"
+            }
+          ]
+        },
+        {
+          "id": "evt-3",
+          "stepIndex": 1,
+          "timestampOffsetMs": 14,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "DB_READ",
+          "title": "Thread 1 Reads Inventory State",
+          "details": "SELECT stock FROM inventory WHERE item_id = \"item-99\" -> Result: 1. Condition (stock >= 1) EVALUATES TRUE.",
+          "expectedState": {
+            "stock": 1,
+            "thread1Checked": true
+          },
+          "actualState": {
+            "stock": 1,
+            "thread1Checked": true
+          },
+          "logs": [
+            {
+              "level": "DEBUG",
+              "message": "[Thread-1] DB query SELECT stock FROM items WHERE id=\"item-99\" returned 1",
+              "timestamp": "14:20:00.016"
+            },
+            {
+              "level": "INFO",
+              "message": "[Thread-1] Validation passed: currentStock (1) >= requested (1)",
+              "timestamp": "14:20:00.018"
+            }
+          ]
+        },
+        {
+          "id": "evt-4",
+          "stepIndex": 1,
+          "timestampOffsetMs": 16,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "DB_READ",
+          "title": "Thread 2 Reads Stale Inventory (Dirty Read Hazard)",
+          "details": "SELECT stock FROM inventory WHERE item_id = \"item-99\" -> Result: 1. Thread 1 has NOT yet committed its deduction! Condition (stock >= 1) EVALUATES TRUE.",
+          "expectedState": {
+            "stock": 0,
+            "thread2Checked": false
+          },
+          "actualState": {
+            "stock": 1,
+            "thread2Checked": true
+          },
+          "logs": [
+            {
+              "level": "WARN",
+              "message": "[Thread-2] DB query returned stock=1 without acquiring a lock (READ_COMMITTED gap)",
+              "timestamp": "14:20:00.020"
+            },
+            {
+              "level": "INFO",
+              "message": "[Thread-2] Validation passed: currentStock (1) >= requested (1)",
+              "timestamp": "14:20:00.022"
+            }
+          ]
+        },
+        {
+          "id": "evt-5",
+          "stepIndex": 2,
+          "timestampOffsetMs": 38,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "DB_WRITE",
+          "title": "Thread 1 Decrements Stock and Emits Order",
+          "details": "UPDATE inventory SET stock = stock - 1 (1 - 1 = 0). Order #ORD-8801 confirmed.",
+          "expectedState": {
+            "stock": 0,
+            "ordersCreated": 1
+          },
+          "actualState": {
+            "stock": 0,
+            "ordersCreated": 1
+          },
+          "responseData": {
+            "status": 200,
+            "latencyMs": 38,
+            "body": {
+              "success": true,
+              "orderId": "ORD-8801",
+              "remainingStock": 0
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-1] UPDATE inventory SET stock = 0 WHERE id=\"item-99\"",
+              "timestamp": "14:20:00.040"
+            },
+            {
+              "level": "INFO",
+              "message": "[Thread-1] Order ORD-8801 persisted to database. HTTP 200 returned.",
+              "timestamp": "14:20:00.042"
+            }
+          ]
+        },
+        {
+          "id": "evt-6",
+          "stepIndex": 2,
+          "timestampOffsetMs": 44,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "DEFECT_TRIGGERED",
+          "title": "CRITICAL DEFECT: Thread 2 Decrements Depleted Stock (Underflow)",
+          "details": "Thread 2 executes UPDATE inventory SET stock = stock - 1 (0 - 1 = -1)! Stock drops to negative. Order #ORD-8802 confirmed.",
+          "expectedState": {
+            "stock": 0,
+            "ordersCreated": 1,
+            "thread2Status": 409
+          },
+          "actualState": {
+            "stock": -1,
+            "ordersCreated": 2,
+            "thread2Status": 200
+          },
+          "isDefectPoint": true,
+          "responseData": {
+            "status": 200,
+            "latencyMs": 42,
+            "body": {
+              "success": true,
+              "orderId": "ORD-8802",
+              "remainingStock": -1
+            }
+          },
+          "logs": [
+            {
+              "level": "ERROR",
+              "message": "[Thread-2] Invariant violation! Stock reduced below zero: -1",
+              "timestamp": "14:20:00.046"
+            },
+            {
+              "level": "ERROR",
+              "message": "[BugMirror Monitor] RACE CONDITION DETECTED! Oversold item \"item-99\" by 1 unit.",
+              "timestamp": "14:20:00.048"
+            }
+          ]
+        },
+        {
+          "id": "evt-7",
+          "stepIndex": 3,
+          "timestampOffsetMs": 50,
+          "threadId": "Monitor-Thread",
+          "virtualUser": 0,
+          "eventType": "ASSERTION_FAILED",
+          "title": "Assertion Failed: Inventory Invariant Violated",
+          "details": "Assertion [stock >= 0 && successfulOrders <= initialStock] failed. Expected <= 1 orders, got 2. Expected stock >= 0, got -1.",
+          "expectedState": {
+            "stock": 0,
+            "totalPurchases": 1,
+            "oversold": false
+          },
+          "actualState": {
+            "stock": -1,
+            "totalPurchases": 2,
+            "oversold": true
+          },
+          "isDefectPoint": true,
+          "logs": [
+            {
+              "level": "ERROR",
+              "message": "Test execution failed invariant test: NonNegativeInventoryConstraint",
+              "timestamp": "14:20:00.052"
+            }
+          ]
+        }
+      ],
+      "aiAnalysis": {
+        "isAiGenerated": false,
+        "modelUsed": "BugMirror Rule-Based Concurrency Detective",
+        "rootCause": "Time-of-Check to Time-of-Use (TOCTOU) race condition in InventoryService.checkout() without database row lock or transaction isolation.",
+        "severity": "CRITICAL",
+        "observedEvidence": [
+          "Two concurrent HTTP POST requests arrived within 2.1ms of each other (req_u1_a9f24 and req_u2_c81d0).",
+          "Both Thread 1 and Thread 2 read stock=1 prior to any database write occurring.",
+          "Thread 2 committed an inventory decrement (0 - 1 = -1) after Thread 1 already purchased the final unit.",
+          "Database persisted a negative integer stock value (-1) and generated two successful order confirmations (ORD-8801, ORD-8802)."
+        ],
+        "reproductionSteps": [
+          "Reset item \"item-99\" stock to exactly 1.",
+          "Send 2 simultaneous HTTP POST requests to /api/inventory/checkout with payload {\"itemId\": \"item-99\", \"quantity\": 1}.",
+          "Ensure request execution interleaves between the stock validation query and the update query.",
+          "Observe that both requests receive HTTP 200 OK and database stock drops to -1."
+        ],
+        "suggestedFix": "// Java / Spring Boot Fix:\n@Transactional(isolation = Isolation.SERIALIZABLE)\n// Or use pessimistic row-level locking:\n@Query(\"SELECT i FROM Inventory i WHERE i.id = :id FOR UPDATE\")\nOptional<Inventory> findByIdWithPessimisticLock(@Param(\"id\") String id);\n\n// In Node.js / TypeScript:\n// Use an atomic SQL update with a guard:\n// UPDATE inventory SET stock = stock - :qty WHERE id = :id AND stock >= :qty;\n// Or wrap the critical section in an async Mutex.",
+        "jiraMarkdown": "h2. [CRITICAL] Race Condition: Flash Sale Overselling on item-99\n*Defect ID:* BM-2026-084\n*Severity:* Critical (Financial & Fulfillment Impact)\n*Preconditions:* Item stock = 1 unit\n*Reproduction Steps:*\n# Dispatch 2 concurrent POST requests to /api/inventory/checkout\n# Observe both requests return 200 OK\n*Expected Result:* Exactly 1 order succeeds (HTTP 200), 2nd order fails with HTTP 409 Conflict.\n*Actual Result:* 2 orders created, stock dropped to -1."
+      }
+    },
+    {
+      "id": "run-seed-corrected-atomic",
+      "scenarioId": "scen-race-inventory",
+      "scenarioName": "Flash Sale: 2 Concurrent Users On 1 Last Item (Corrected Synchronized Mode)",
+      "projectId": "proj-1",
+      "mode": "corrected",
+      "virtualUsers": 2,
+      "initialStock": 1,
+      "finalStock": 0,
+      "successOrders": 1,
+      "failedOrders": 1,
+      "status": "PASSED",
+      "startedAt": "2026-10-20T14:02:34.701Z",
+      "completedAt": "2026-10-20T14:02:34.981Z",
+      "durationMs": 280,
+      "events": [
+        {
+          "id": "cevt-1",
+          "stepIndex": 0,
+          "timestampOffsetMs": 0,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "USER_ACTION",
+          "title": "User 1 Dispatches Checkout Request",
+          "details": "Buyer 1 initiated POST /api/inventory/checkout (stock: 1)",
+          "expectedState": {
+            "stock": 1
+          },
+          "actualState": {
+            "stock": 1
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "POST /api/inventory/checkout received from User 1",
+              "timestamp": "15:10:00.001"
+            }
+          ]
+        },
+        {
+          "id": "cevt-2",
+          "stepIndex": 0,
+          "timestampOffsetMs": 2,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "USER_ACTION",
+          "title": "User 2 Dispatches Concurrent Checkout Request",
+          "details": "Buyer 2 initiated POST /api/inventory/checkout (stock: 1)",
+          "expectedState": {
+            "stock": 1
+          },
+          "actualState": {
+            "stock": 1
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "POST /api/inventory/checkout received from User 2",
+              "timestamp": "15:10:00.003"
+            }
+          ]
+        },
+        {
+          "id": "cevt-3",
+          "stepIndex": 1,
+          "timestampOffsetMs": 12,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "MUTEX_ACQUIRE",
+          "title": "Thread 1 Acquires Transactional Mutex Lock",
+          "details": "Thread 1 successfully locked row for \"item-99\". Mutex active.",
+          "expectedState": {
+            "lockOwner": "Thread-1"
+          },
+          "actualState": {
+            "lockOwner": "Thread-1"
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-1] Acquired exclusive lock for item-99",
+              "timestamp": "15:10:00.014"
+            }
+          ]
+        },
+        {
+          "id": "cevt-4",
+          "stepIndex": 1,
+          "timestampOffsetMs": 15,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "MUTEX_REJECT",
+          "title": "Thread 2 Queued Behind Lock (Synchronized Queue)",
+          "details": "Thread 2 waits for Thread 1 transaction commit before reading.",
+          "expectedState": {
+            "thread2Waiting": true
+          },
+          "actualState": {
+            "thread2Waiting": true
+          },
+          "logs": [
+            {
+              "level": "DEBUG",
+              "message": "[Thread-2] Row locked by Thread-1. Waiting for lock release...",
+              "timestamp": "15:10:00.016"
+            }
+          ]
+        },
+        {
+          "id": "cevt-5",
+          "stepIndex": 2,
+          "timestampOffsetMs": 35,
+          "threadId": "Thread-Worker-1",
+          "virtualUser": 1,
+          "eventType": "DB_WRITE",
+          "title": "Thread 1 Decrements Stock to 0 & Commits",
+          "details": "Stock 1 -> 0. Order #ORD-9910 issued. Lock released.",
+          "expectedState": {
+            "stock": 0,
+            "order1": "CONFIRMED"
+          },
+          "actualState": {
+            "stock": 0,
+            "order1": "CONFIRMED"
+          },
+          "responseData": {
+            "status": 200,
+            "latencyMs": 35,
+            "body": {
+              "success": true,
+              "orderId": "ORD-9910",
+              "remainingStock": 0
+            }
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "[Thread-1] Stock decremented to 0. Transaction committed.",
+              "timestamp": "15:10:00.036"
+            },
+            {
+              "level": "INFO",
+              "message": "[Thread-1] Lock released.",
+              "timestamp": "15:10:00.038"
+            }
+          ]
+        },
+        {
+          "id": "cevt-6",
+          "stepIndex": 2,
+          "timestampOffsetMs": 40,
+          "threadId": "Thread-Worker-2",
+          "virtualUser": 2,
+          "eventType": "STATE_CHANGE",
+          "title": "Thread 2 Reads Fresh Stock (0) & Fails Gracefully",
+          "details": "Thread 2 acquires lock, reads stock=0, evaluates (0 >= 1) FALSE. Returns HTTP 409 Insufficient Stock.",
+          "expectedState": {
+            "stock": 0,
+            "thread2Status": 409
+          },
+          "actualState": {
+            "stock": 0,
+            "thread2Status": 409
+          },
+          "responseData": {
+            "status": 409,
+            "latencyMs": 38,
+            "body": {
+              "success": false,
+              "error": "OUT_OF_STOCK",
+              "message": "Item sold out during checkout."
+            }
+          },
+          "logs": [
+            {
+              "level": "WARN",
+              "message": "[Thread-2] Insufficient inventory. Current stock: 0. Refusing purchase.",
+              "timestamp": "15:10:00.042"
+            },
+            {
+              "level": "INFO",
+              "message": "[Thread-2] HTTP 409 Conflict returned safely to User 2.",
+              "timestamp": "15:10:00.044"
+            }
+          ]
+        },
+        {
+          "id": "cevt-7",
+          "stepIndex": 3,
+          "timestampOffsetMs": 48,
+          "threadId": "Monitor-Thread",
+          "virtualUser": 0,
+          "eventType": "ASSERTION_PASSED",
+          "title": "Assertion Passed: Zero Oversell Invariant Verified",
+          "details": "All invariants satisfied: Stock >= 0 (0), exactly 1 purchase succeeded, 0 inventory leakage.",
+          "expectedState": {
+            "stock": 0,
+            "totalPurchases": 1,
+            "oversold": false
+          },
+          "actualState": {
+            "stock": 0,
+            "totalPurchases": 1,
+            "oversold": false
+          },
+          "logs": [
+            {
+              "level": "INFO",
+              "message": "Validation successful: Invariants maintained.",
+              "timestamp": "15:10:00.050"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "defects": [
+    {
+      "id": "DEF-814276",
+      "runId": "run-1793372814276-y35p",
+      "scenarioId": "scen-race-inventory",
+      "title": "Race Condition Detected: 2 orders succeeded for 1 available stock unit (Inventory underflow: final stock = -1)",
+      "severity": "CRITICAL",
+      "category": "Concurrency Race Condition",
+      "status": "OPEN",
+      "detectedAt": "2026-10-30T15:06:54.276Z",
+      "rootCause": "Time-of-Check to Time-of-Use (TOCTOU) race condition in InventoryService.checkout() without database row lock or transaction isolation."
+    },
+    {
+      "id": "DEF-380560",
+      "runId": "run-1793370380559-sdc5",
+      "scenarioId": "scen-race-inventory",
+      "title": "Race Condition Detected: 2 orders succeeded for 1 available stock unit (Inventory underflow: final stock = -1)",
+      "severity": "CRITICAL",
+      "category": "Concurrency Race Condition",
+      "status": "OPEN",
+      "detectedAt": "2026-10-30T14:26:20.559Z",
+      "rootCause": "Time-of-Check to Time-of-Use (TOCTOU) race condition in InventoryService.checkout() without database row lock or transaction isolation."
+    },
+    {
+      "id": "DEF-598075",
+      "runId": "run-1792508598074-beil",
+      "scenarioId": "scen-race-inventory",
+      "title": "Race Condition Detected: 2 orders succeeded for 1 available stock unit (Inventory underflow: final stock = -1)",
+      "severity": "CRITICAL",
+      "category": "Concurrency Race Condition",
+      "status": "OPEN",
+      "detectedAt": "2026-10-20T15:03:18.074Z",
+      "rootCause": "Time-of-Check to Time-of-Use (TOCTOU) race condition in InventoryService.checkout() without database row lock or transaction isolation."
+    },
+    {
+      "id": "DEF-880201",
+      "runId": "run-seed-defective-race",
+      "scenarioId": "scen-race-inventory",
+      "title": "Flash Sale Overselling: 2 orders succeeded for 1 available stock unit",
+      "severity": "CRITICAL",
+      "category": "Concurrency Race Condition",
+      "status": "OPEN",
+      "detectedAt": "2026-10-20T13:02:35.021Z",
+      "rootCause": "Time-of-Check to Time-of-Use (TOCTOU) race condition in InventoryService.checkout() without database row lock or transaction isolation."
+    }
+  ]
+}

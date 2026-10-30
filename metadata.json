@@ -1,0 +1,6 @@
+{
+  "name": "BugMirror AI - Intelligent QA Engineering & Bug Time Machine",
+  "description": "Intelligent QA testing platform simulating user behavior, race conditions, concurrency defects, and interactive Bug Time Machine root cause replay.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
